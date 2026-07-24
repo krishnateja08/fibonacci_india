@@ -186,6 +186,9 @@ class TradePlan:
     rsi: Optional[float] = None  # 14-period Wilder RSI on daily closes; None if not enough history
 
     sma200: Optional[float] = None       # long-term trend filter (None if not enough history)
+    macro_trend: Optional[str] = None    # "Uptrend"/"Downtrend" = price vs 200-SMA; None if sma200 unavailable.
+                                          # This is the "zoomed-out chart" trend — independent of `trend`,
+                                          # which is only the direction of the most recent swing LEG.
     counter_trend: bool = False          # True if the leg direction fights the 200-SMA trend
 
     vol_confirmed: Optional[bool] = None   # True = today's volume is below its 20d avg (healthy pullback)
@@ -674,7 +677,13 @@ def build_plan(ticker: str, market_regime: Optional[dict] = None) -> TradePlan:
         # long-term trend; relabel it as counter-trend so it's flagged as
         # higher risk rather than presented as a standard entry.
         counter_trend = False
+        macro_trend = None
         if sma200 is not None:
+            # Simple, independent read of the "zoomed-out chart" trend:
+            # price above its own 200-day average = macro uptrend, below
+            # = macro downtrend. This says nothing about the swing leg —
+            # it's deliberately the other half of the picture.
+            macro_trend = "Uptrend" if current_price > sma200 else "Downtrend"
             if trend == "Uptrend" and current_price < sma200:
                 counter_trend = True
             elif trend == "Downtrend" and current_price > sma200:
@@ -730,6 +739,7 @@ def build_plan(ticker: str, market_regime: Optional[dict] = None) -> TradePlan:
         plan.extended_leg = is_extended
         plan.rsi = rsi
         plan.sma200 = sma200
+        plan.macro_trend = macro_trend
         plan.counter_trend = counter_trend
         plan.vol_confirmed = vol_confirmed
         plan.reversal_confirmed = reversal_confirmed
@@ -816,6 +826,17 @@ def render_card(p: TradePlan) -> str:
     trend_chip_class = "chip-up" if trend_up else "chip-down"
     trend_arrow_cls = "up" if trend_up else "down"
     trend_arrow = "▲" if trend_up else "▼"
+
+    # Macro (200-SMA) trend badge — shown next to the swing-leg trend chip
+    # so the two reads (short-term leg vs. zoomed-out chart trend) are both
+    # explicit instead of having to be inferred from the Counter-Trend flag.
+    if p.macro_trend is None:
+        macro_chip_class, macro_chip_text = "chip-na", "SMA200 n/a"
+    else:
+        macro_up = p.macro_trend == "Uptrend"
+        macro_chip_class = "chip-outline-up" if macro_up else "chip-outline-down"
+        macro_chip_text = f"SMA200 {'▲' if macro_up else '▼'} {p.macro_trend}"
+
     _, status_color = STATUS_META.get(p.status_class, ("", "#6B7280"))
     spark_svg = make_spark_svg(p.spark, color=status_color)
 
@@ -838,13 +859,14 @@ def render_card(p: TradePlan) -> str:
         data-ltp="{p.current_price}" data-chg="{p.chg_pct}" data-rsi="{p.rsi if p.rsi is not None else ''}"
         data-trend="{p.trend}" data-fibzone="{p.fib_zone}" data-entrylow="{p.entry_low}" data-entryhigh="{p.entry_high}"
         data-stop="{p.stop_loss}" data-tp1="{p.tp1}" data-tp2="{p.tp2}" data-swinghigh="{p.swing_high}" data-swinglow="{p.swing_low}"
-        data-distance="{p.distance_to_entry}">
+        data-distance="{p.distance_to_entry}" data-macrotrend="{p.macro_trend or ''}">
 
         <div class="card-block">
             <div class="card-symbol-row">
                 <span class="card-symbol">{p.ticker}</span>
                 <span class="trend-arrow {trend_arrow_cls}">{trend_arrow}</span>
-                <span class="chip {trend_chip_class}">{p.trend}</span>
+                <span class="chip {trend_chip_class}" title="Direction of the most recent confirmed swing leg">Leg: {p.trend}</span>
+                <span class="chip {macro_chip_class}" title="Price vs 200-day SMA — the zoomed-out chart trend">{macro_chip_text}</span>
             </div>
             <div class="card-price-row">
                 <span class="card-ltp">{fmt(p.current_price)}</span>
@@ -1166,6 +1188,9 @@ def render_html(stock_plans: List[TradePlan], index_plans: List[TradePlan]) -> s
         text-transform: uppercase; letter-spacing: 0.03em; }}
     .chip-up {{ background: rgba(34,197,94,0.14); color: var(--pos); }}
     .chip-down {{ background: rgba(248,113,113,0.14); color: var(--neg); }}
+    .chip-outline-up {{ background: transparent; color: var(--pos); border: 1px solid rgba(34,197,94,0.5); }}
+    .chip-outline-down {{ background: transparent; color: var(--neg); border: 1px solid rgba(248,113,113,0.5); }}
+    .chip-na {{ background: transparent; color: var(--muted); border: 1px solid var(--border); }}
     .empty {{ text-align: center; color: var(--muted); padding: 32px; }}
 
     footer.summary-bar {{
@@ -1344,7 +1369,7 @@ def render_html(stock_plans: List[TradePlan], index_plans: List[TradePlan]) -> s
         }});
 
         exportBtn.addEventListener('click', () => {{
-            const fields = ['symbol','ltp','chg','rsi','trend','fibzone','swinghigh','swinglow','entrylow','entryhigh','stop','tp1','tp2','status'];
+            const fields = ['symbol','ltp','chg','rsi','trend','macrotrend','fibzone','swinghigh','swinglow','entrylow','entryhigh','stop','tp1','tp2','status'];
             const cards = dataCards().filter(c => c.style.display !== 'none');
             if (!cards.length) return;
             const lines = [fields.join(',')];
@@ -1399,7 +1424,7 @@ def main():
         plans.append(plan)
         if plan.ok:
             ok_count += 1
-            print(f"[{i:>3}/{len(TICKERS)}] {t:<16} OK   trend={plan.trend:<9} "
+            print(f"[{i:>3}/{len(TICKERS)}] {t:<16} OK   leg={plan.trend:<9} macro={(plan.macro_trend or 'n/a'):<9} "
                   f"LTP={plan.current_price:>10.2f}  status={plan.status_label}")
         else:
             print(f"[{i:>3}/{len(TICKERS)}] {t:<16} FAIL {plan.error}")
@@ -1412,7 +1437,7 @@ def main():
         index_plans.append(plan)
         if plan.ok:
             index_ok_count += 1
-            print(f"[{i:>3}/{len(INDEX_TICKERS)}] {t:<16} OK   trend={plan.trend:<9} "
+            print(f"[{i:>3}/{len(INDEX_TICKERS)}] {t:<16} OK   leg={plan.trend:<9} macro={(plan.macro_trend or 'n/a'):<9} "
                   f"LTP={plan.current_price:>10.2f}  status={plan.status_label}")
         else:
             print(f"[{i:>3}/{len(INDEX_TICKERS)}] {t:<16} FAIL {plan.error}")
