@@ -6,7 +6,7 @@ on:
   # Adjust the cron expression to whatever time suits you, or remove
   # the schedule block entirely if you only want manual runs.
   schedule:
-    - cron: '45 3 * * 1-5'   # Mon–Fri only
+    - cron: '30 12 * * 1-5'   # Mon–Fri only
   # Lets you trigger a run manually from the Actions tab in GitHub.
   workflow_dispatch:
 
