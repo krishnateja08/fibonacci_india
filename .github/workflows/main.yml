@@ -1,0 +1,44 @@
+name: Generate Fibonacci Trade Plan and Deploy to Pages
+
+on:
+  # Run automatically on a schedule (UTC time).
+  # Example below: 03:45 UTC = 09:15 IST, right after the NSE market opens.
+  # Adjust the cron expression to whatever time suits you, or remove
+  # the schedule block entirely if you only want manual runs.
+  schedule:
+    - cron: '45 3 * * 1-5'   # Mon–Fri only
+  # Lets you trigger a run manually from the Actions tab in GitHub.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance pandas numpy
+
+      - name: Run trade plan generator
+        run: python fib_swing_trade_plan.py
+
+      - name: Prepare Pages output
+        run: |
+          mkdir -p public
+          cp fibonacci_trade_plan.html public/index.html
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
