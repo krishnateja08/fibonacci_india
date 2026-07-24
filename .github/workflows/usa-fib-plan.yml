@@ -1,0 +1,31 @@
+name: Generate USA Fibonacci Trade Plan and Deploy to Pages
+on:
+  schedule:
+    - cron: '00 21* * 1-5'   # 13:35 UTC = 9:35 AM ET, right after NYSE opens
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install yfinance pandas numpy
+      - name: Run USA trade plan generator
+        run: python usa/fib_swing_trade_plan_us.py
+      - name: Prepare Pages output
+        run: |
+          mkdir -p public
+          cp usa/fibonacci_trade_plan.html public/index.html
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          destination_dir: usa
