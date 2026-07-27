@@ -1,7 +1,7 @@
 name: Generate USA Fibonacci Trade Plan and Deploy to Pages
 on:
   schedule:
-    - cron: '00 21 * * 1-5'   # 13:35 UTC = 9:35 AM ET, right after NYSE opens
+    - cron: '00 21 * * *'   # 13:35 UTC = 9:35 AM ET, right after NYSE opens
   workflow_dispatch:
 permissions:
   contents: write
